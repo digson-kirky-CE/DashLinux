@@ -3,6 +3,10 @@ comment "Machine Types"
 
 if M68KCLASSIC
 
+config AMIGA500
+	bool "Amiga500 support"
+	depends on M68000
+
 config AMIGA
 	bool "Amiga support"
 	depends on MMU

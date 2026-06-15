@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 
 CC =		m68k-cbm-amigados-gcc
+# or, CC=mcad-gcc
 CFLAGS =	-Wall -O2
 
 

@@ -10,7 +10,6 @@ config AMIGA500
 
 config AMIGA
 	bool "Amiga support"
-	depends off MMU
 	select LEGACY_TIMER_TICK
 	help
 	  This option enables support for the Amiga series of computers. If

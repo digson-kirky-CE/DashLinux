@@ -6,10 +6,11 @@ if M68KCLASSIC
 config AMIGA500
 	bool "Amiga500 support"
 	depends on M68000
+	depends on AMIGA
 
 config AMIGA
 	bool "Amiga support"
-	depends on MMU
+	depends off MMU
 	select LEGACY_TIMER_TICK
 	help
 	  This option enables support for the Amiga series of computers. If

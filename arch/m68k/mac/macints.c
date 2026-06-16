@@ -247,22 +247,19 @@ void mac_irq_disable(struct irq_data *data)
 
 static unsigned int mac_irq_startup(struct irq_data *data)
 {
-	int irq = data->irq;
-
-	if (IRQ_SRC(irq) == 7 && !oss_present)
-		via_nubus_irq_startup(irq);
-	else
-		mac_irq_enable(data);
-
-	return 0;
+    int irq = data->irq;
+    if (IRQ_SRC(irq) == 7 && !oss_present)
+        via_nubus_irq_startup(irq);
+    else
+        mac_irq_enable(data);
+    return 0;
 }
 
 static void mac_irq_shutdown(struct irq_data *data)
 {
-	int irq = data->irq;
-
-	if (IRQ_SRC(irq) == 7 && !oss_present)
-		via_nubus_irq_shutdown(irq);
-	else
-		mac_irq_disable(data);
+    int irq = data->irq;
+    if (IRQ_SRC(irq) == 7 && !oss_present)
+        via_nubus_irq_shutdown(irq);
+    else
+        mac_irq_disable(data);
 }

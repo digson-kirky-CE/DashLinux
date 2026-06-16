@@ -258,6 +258,17 @@ void __init via_init(void)
 		/* CA2 (SCSI DRQ), CB2 (SCSI IRQ): indep. input, neg. edge */
 		via2[vPCR] = 0x22;
 	}
+	/* ... 之前的初始化代码 ... */
+
+	switch (macintosh_config->via_type) {
+    	case MAC_VIA_II:
+    	case MAC_VIA_QUADRA:
+        	/* Quadra 700 走这里：让所有槽位的中断线先保持输入 */
+        	pr_debug("VIA2 vDirA is 0x%02X\n", via2[vDirA]);
+        	break;
+    	case MAC_VIA_IIci:
+        	via2[rSIER] = 0x7F;
+        	break;
 }
 
 /*
@@ -496,32 +507,62 @@ void __init via_register_interrupts(void)
 	irq_set_chained_handler(IRQ_MAC_NUBUS, via_nubus_irq);
 }
 
-void via_irq_enable(int irq) {
-	int irq_src	= IRQ_SRC(irq);
-	int irq_idx	= IRQ_IDX(irq);
+void via_nubus_irq_startup(int irq)
+{
+    int irq_idx = IRQ_IDX(irq);
+    switch (macintosh_config->via_type) {
+    case MAC_VIA_II:
+    case MAC_VIA_QUADRA:
+        /* 把该槽位的引脚设为输入（启用中断） */
+        if (macintosh_config->via_type == MAC_VIA_II)
+            via2[vDirA] &= 0xC0 | ~(1 << irq_idx);
+        else
+            via2[vDirA] &= 0x80 | ~(1 << irq_idx);
+        via_irq_enable(irq);
+        break;
+    case MAC_VIA_IIci:
+        via_irq_enable(irq);
+        break;
+    }
+}
 
-	if (irq_src == 1) {
-		via1[vIER] = IER_SET_BIT(irq_idx);
-	} else if (irq_src == 2) {
-		if (irq != IRQ_MAC_NUBUS || nubus_disabled == 0)
-			via2[gIER] = IER_SET_BIT(irq_idx);
-	} else if (irq_src == 7) {
-		switch (macintosh_config->via_type) {
-		case MAC_VIA_II:
-		case MAC_VIA_QUADRA:
-			nubus_disabled &= ~(1 << irq_idx);
-			/* Enable the CA1 interrupt when no slot is disabled. */
-			if (!nubus_disabled)
-				via2[gIER] = IER_SET_BIT(1);
-			break;
-		case MAC_VIA_IICI:
-			/* On RBV, enable the slot interrupt.
-			 * SIER works like IER.
-			 */
-			via2[rSIER] = IER_SET_BIT(irq_idx);
-			break;
-		}
-	}
+void via_nubus_irq_shutdown(int irq)
+{
+    /* 注意：Quadra 700 硬件限制，禁用单个槽意味着禁用所有槽 */
+    switch (macintosh_config->via_type) {
+    case MAC_VIA_II:
+    case MAC_VIA_QUADRA:
+        via_irq_disable(irq);
+        break;
+    }
+}
+
+void via_irq_enable(int irq)
+{
+    int irq_src = IRQ_SRC(irq);
+    int irq_idx = IRQ_IDX(irq);
+
+    if (irq_src == 7) {  /* NuBus 中断源 */
+        switch (macintosh_config->via_type) {
+        case MAC_VIA_II:
+            nubus_disabled &= ~(1 << irq_idx);
+            if (!nubus_disabled)
+                via2[gIER] = IER_SET_BIT(1);  /* 全部启用后才开 CA1 */
+            break;
+        case MAC_VIA_IICI:
+            via2[rSIER] = IER_SET_BIT(irq_idx);
+            break;
+        case MAC_VIA_QUADRA:
+            /* Quadra 700：该槽设输入，检查计数器 */
+            if ((macintosh_config->adb_type != MAC_ADB_PB1) &&
+                (macintosh_config->adb_type != MAC_ADB_PB2)) {
+                via2[vDirA] &= ~(1 << irq_idx);
+            }
+            /* fall through */
+        }
+        return;
+    }
+    /* 其他中断的正常处理... */
 }
 
 void via_irq_disable(int irq) {

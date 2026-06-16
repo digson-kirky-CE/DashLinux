@@ -9,7 +9,7 @@
 /*
  * Miscellaneous linux stuff
  */
-
+#include "../include/uapi/asm/bootinfo-mac.h"
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/reboot.h>
@@ -174,6 +174,17 @@ static struct mac_model mac_data_table[] = {
 	/*
 	 * We'll pretend to be a Macintosh II, that's pretty safe.
 	 */
+	// 在 arch/m68k/mac/config.c 的 mac_data_table[] 数组中添加
+	{
+		.ident      = MAC_MODEL_Q700,    // 这个宏需要先在头文件里定义
+    		.name       = "Quadra 700",
+    		.adb_type   = MAC_ADB_II,        // ADB 控制器类型
+    		.via_type   = MAC_VIA_QUADRA,    // VIA 芯片类型，这是关键！
+    		.scsi_type  = MAC_SCSI_QUADRA,   // SCSI 控制器类型
+    		.scc_type   = MAC_SCC_QUADRA,    // 串口控制器类型
+    		.ether_type = MAC_ETHER_SONIC,   // Quadra 700 板载的就是 SONIC 网卡
+    		.nubus_type = MAC_NUBUS,         // 有 NuBus 插槽
+	},
 
 	{
 		.ident		= MAC_MODEL_II,

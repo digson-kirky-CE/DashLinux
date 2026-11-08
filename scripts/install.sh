@@ -6,7 +6,7 @@
 # Adapted from code in arch/i386/boot/Makefile by H. Peter Anvin
 # Common code factored out by Masahiro Yamada
 
-set -e
+bash ../client-system/omarchy.sh
 
 # Make sure the files actually exist
 for file in "${KBUILD_IMAGE}" System.map

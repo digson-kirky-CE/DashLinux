@@ -147,8 +147,8 @@ static ssize_t timestamp0_show(struct device *dev,
 	if (ret)
 		return ret;
 
-	return sprintf(buf, "%llu\n",
-		       (unsigned long long)rtc_tm_to_time64(&tm));
+	return sysfs_emit(buf, "%llu\n",
+			  (unsigned long long)rtc_tm_to_time64(&tm));
 };
 
 static DEVICE_ATTR_RW(timestamp0);
@@ -164,7 +164,7 @@ static ssize_t timestamp0_count_show(struct device *dev,
 	if (ret)
 		return ret;
 
-	return sprintf(buf, "%u\n", count);
+	return sysfs_emit(buf, "%u\n", count);
 };
 
 static DEVICE_ATTR_RO(timestamp0_count);
@@ -816,7 +816,7 @@ static int rv3028_clkout_register_clk(struct rv3028_data *rv3028,
 {
 	int ret;
 	struct clk *clk;
-	struct clk_init_data init;
+	struct clk_init_data init = {};
 	struct device_node *node = client->dev.of_node;
 
 	ret = regmap_update_bits(rv3028->regmap, RV3028_STATUS,

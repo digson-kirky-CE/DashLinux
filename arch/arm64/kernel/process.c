@@ -320,9 +320,18 @@ static int copy_thread_gcs(struct task_struct *p,
 	return 0;
 }
 
+static void gcs_reset_thread(struct task_struct *task)
+{
+	task->thread.gcs_base = 0;
+	task->thread.gcs_size = 0;
+	task->thread.gcspr_el0 = 0;
+}
+
 #else
 
 static void flush_gcs(void) { }
+static void gcs_reset_thread(struct task_struct *task) { }
+
 static int copy_thread_gcs(struct task_struct *p,
 			   const struct kernel_clone_args *args)
 {
@@ -341,41 +350,14 @@ void flush_thread(void)
 	flush_gcs();
 }
 
-#ifdef CONFIG_ARM64_ERRATUM_4193714
-
-static void arch_dup_tlbbatch_mask(struct task_struct *dst)
+void exit_thread(struct task_struct *tsk)
 {
-	/*
-	 * Clear the inherited cpumask with memset() to cover both cases where
-	 * cpumask_var_t is a pointer or an array. It will be allocated lazily
-	 * in sme_dvmsync_add_pending() if CPUMASK_OFFSTACK=y.
-	 */
-	if (alternative_has_cap_unlikely(ARM64_WORKAROUND_4193714))
-		memset(&dst->tlb_ubc.arch.cpumask, 0,
-		       sizeof(dst->tlb_ubc.arch.cpumask));
+	/* Failed fork after copy_thread(); deactivate_mm() does not run. */
+	gcs_free(tsk);
 }
-
-static void arch_release_tlbbatch_mask(struct task_struct *tsk)
-{
-	if (alternative_has_cap_unlikely(ARM64_WORKAROUND_4193714))
-		free_cpumask_var(tsk->tlb_ubc.arch.cpumask);
-}
-
-#else
-
-static void arch_dup_tlbbatch_mask(struct task_struct *dst)
-{
-}
-
-static void arch_release_tlbbatch_mask(struct task_struct *tsk)
-{
-}
-
-#endif /* CONFIG_ARM64_ERRATUM_4193714 */
 
 void arch_release_task_struct(struct task_struct *tsk)
 {
-	arch_release_tlbbatch_mask(tsk);
 	fpsimd_release_task(tsk);
 }
 
@@ -390,8 +372,6 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	fpsimd_sync_from_effective_state(src);
 
 	*dst = *src;
-
-	arch_dup_tlbbatch_mask(dst);
 
 	/*
 	 * Drop stale reference to src's sve_state and convert dst to
@@ -538,6 +518,8 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 
 		p->thread.cpu_context.x19 = (unsigned long)args->fn;
 		p->thread.cpu_context.x20 = (unsigned long)args->fn_arg;
+		/* Kernel threads sharing the parent's mm must not free its GCS. */
+		gcs_reset_thread(p);
 
 		if (system_supports_poe())
 			p->thread.por_el0 = POR_EL0_INIT;

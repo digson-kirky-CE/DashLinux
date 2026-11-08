@@ -16,6 +16,11 @@ struct regs_dump {
 	u64 abi;
 	u64 mask;
 	u64 *regs;
+	u64 nr_vectors;
+	u64 vector_qwords;
+	u64 nr_pred;
+	u64 pred_qwords;
+	u64 *simd_data;
 
 	/* Cached values/mask filled by first register access. */
 	u64 cache_regs[PERF_SAMPLE_REGS_CACHE_SIZE];
@@ -158,6 +163,8 @@ struct perf_sample {
 	u64 code_page_size;
 	/** @cgroup: The sample event PERF_SAMPLE_CGROUP value. */
 	u64 cgroup;
+	/** @file_offset: Byte offset of this event in the perf.data file. */
+	u64 file_offset;
 	/** @flags: Extra flag data from auxiliary events like intel-pt. */
 	u32 flags;
 	/** @machine_pid: The guest machine pid derived from the sample id. */

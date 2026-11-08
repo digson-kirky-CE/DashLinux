@@ -19,10 +19,6 @@ struct seq_file;
 
 /* MPTCP sk_buff extension data */
 struct mptcp_ext {
-	union {
-		u64	data_ack;
-		u32	data_ack32;
-	};
 	u64		data_seq;
 	u32		subflow_seq;
 	u16		data_len;
@@ -72,7 +68,8 @@ struct mptcp_out_options {
 	u8 reset_reason:4,
 	   reset_transient:1,
 	   csum_reqd:1,
-	   allow_join_id0:1;
+	   allow_join_id0:1,
+	   drop_ts:1;
 	union {
 		struct {
 			u64 sndr_key;
@@ -152,9 +149,9 @@ bool mptcp_syn_options(struct sock *sk, const struct sk_buff *skb,
 		       unsigned int *size, struct mptcp_out_options *opts);
 bool mptcp_synack_options(const struct request_sock *req, unsigned int *size,
 			  struct mptcp_out_options *opts);
-bool mptcp_established_options(struct sock *sk, struct sk_buff *skb,
-			       unsigned int *size, unsigned int remaining,
-			       struct mptcp_out_options *opts);
+int mptcp_established_options(struct sock *sk, struct sk_buff *skb,
+			      unsigned int remaining, bool has_ts,
+			      struct mptcp_out_options *opts);
 bool mptcp_incoming_options(struct sock *sk, struct sk_buff *skb);
 
 void mptcp_write_options(struct tcphdr *th, __be32 *ptr, struct tcp_sock *tp,
@@ -222,6 +219,9 @@ int mptcp_subflow_init_cookie_req(struct request_sock *req,
 struct request_sock *mptcp_subflow_reqsk_alloc(const struct request_sock_ops *ops,
 					       struct sock *sk_listener,
 					       bool attach_listener);
+/* Caller must hold an RCU read-side lock. */
+void mptcp_subflow_reqsk_clone(struct request_sock *req,
+			       struct request_sock *new_req);
 
 __be32 mptcp_get_reset_option(const struct sk_buff *skb);
 
@@ -269,15 +269,6 @@ static inline bool mptcp_synack_options(const struct request_sock *req,
 	return false;
 }
 
-static inline bool mptcp_established_options(struct sock *sk,
-					     struct sk_buff *skb,
-					     unsigned int *size,
-					     unsigned int remaining,
-					     struct mptcp_out_options *opts)
-{
-	return false;
-}
-
 static inline bool mptcp_incoming_options(struct sock *sk,
 					  struct sk_buff *skb)
 {
@@ -315,6 +306,12 @@ static inline struct request_sock *mptcp_subflow_reqsk_alloc(const struct reques
 							     bool attach_listener)
 {
 	return NULL;
+}
+
+/* Caller must hold an RCU read-side lock. */
+static inline void mptcp_subflow_reqsk_clone(struct request_sock *req,
+					     struct request_sock *new_req)
+{
 }
 
 static inline __be32 mptcp_reset_option(const struct sk_buff *skb)  { return htonl(0u); }

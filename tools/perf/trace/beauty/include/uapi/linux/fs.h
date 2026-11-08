@@ -88,7 +88,7 @@ struct fstrim_range {
  * We include a length field because some filesystems (vfat) have an identifier
  * that we do want to expose as a UUID, but doesn't have the standard length.
  *
- * We use a fixed size buffer beacuse this interface will, by fiat, never
+ * We use a fixed size buffer because this interface will, by fiat, never
  * support "UUIDs" longer than 16 bytes; we don't want to force all downstream
  * users to have to deal with that.
  */
@@ -395,7 +395,16 @@ struct file_attr {
 #define FS_DAX_FL			0x02000000 /* Inode is DAX */
 #define FS_INLINE_DATA_FL		0x10000000 /* Reserved for ext4 */
 #define FS_PROJINHERIT_FL		0x20000000 /* Create with parents projid */
-#define FS_CASEFOLD_FL			0x40000000 /* Folder is case insensitive */
+/*
+ * FS_CASEFOLD_FL indicates case-insensitive name lookup. The
+ * bit is most often reported on directories, where it controls
+ * lookups of entries within. Filesystems that derive
+ * case-insensitivity from mount or volume state may also report
+ * it on non-directory inodes; userspace must not assume the bit
+ * is directory-only. FS_XFLAG_CASEFOLD reports the same
+ * information read-only via FS_IOC_FSGETXATTR.
+ */
+#define FS_CASEFOLD_FL			0x40000000
 #define FS_RESERVED_FL			0x80000000 /* reserved for ext2 lib */
 
 #define FS_FL_USER_VISIBLE		0x0003DFFF /* User visible flags */
@@ -462,6 +471,7 @@ typedef int __bitwise __kernel_rwf_t;
 #define PAGE_IS_HUGE		(1 << 6)
 #define PAGE_IS_SOFT_DIRTY	(1 << 7)
 #define PAGE_IS_GUARD		(1 << 8)
+#define PAGE_IS_ACCESSED	(1 << 9)
 
 /*
  * struct page_region - Page region with flags

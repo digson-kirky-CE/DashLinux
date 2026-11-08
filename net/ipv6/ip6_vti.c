@@ -437,7 +437,7 @@ static bool vti6_state_check(const struct xfrm_state *x,
  * vti6_xmit - send a packet
  *   @skb: the outgoing socket buffer
  *   @dev: the outgoing tunnel device
- *   @fl: the flow informations for the xfrm_lookup
+ *   @fl: the flow information for the xfrm_lookup
  **/
 static int
 vti6_xmit(struct sk_buff *skb, struct net_device *dev, struct flowi *fl)
@@ -1045,6 +1045,9 @@ static int vti6_changelink(struct net_device *dev, struct nlattr *tb[],
 	struct net *net = t->net;
 	struct __ip6_tnl_parm p;
 	struct vti6_net *ip6n;
+
+	if (!rtnl_dev_link_net_capable(dev, net))
+		return -EPERM;
 
 	ip6n = net_generic(net, vti6_net_id);
 	if (dev == ip6n->fb_tnl_dev)

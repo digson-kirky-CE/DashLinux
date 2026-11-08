@@ -4,7 +4,6 @@
  */
 
 #include <linux/clk-provider.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
@@ -163,17 +162,7 @@ static struct platform_driver tcsr_cc_eliza_driver = {
 	},
 };
 
-static int __init tcsr_cc_eliza_init(void)
-{
-	return platform_driver_register(&tcsr_cc_eliza_driver);
-}
-subsys_initcall(tcsr_cc_eliza_init);
-
-static void __exit tcsr_cc_eliza_exit(void)
-{
-	platform_driver_unregister(&tcsr_cc_eliza_driver);
-}
-module_exit(tcsr_cc_eliza_exit);
+subsys_platform_driver(tcsr_cc_eliza_driver);
 
 MODULE_DESCRIPTION("QTI TCSR_CC Eliza Driver");
 MODULE_LICENSE("GPL");

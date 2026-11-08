@@ -377,7 +377,6 @@ void vtime_task_switch(struct task_struct *prev)
 	}
 }
 
-#ifdef CONFIG_NO_HZ_COMMON
 /**
  * vtime_reset - Fast forward vtime entry clocks
  *
@@ -394,6 +393,7 @@ void vtime_reset(void)
 #endif
 }
 
+#ifdef CONFIG_NO_HZ_COMMON
 /**
  * vtime_dyntick_start - Inform vtime about entry to idle-dynticks
  *
@@ -615,13 +615,13 @@ DEFINE_INTERRUPT_HANDLER_ASYNC(timer_interrupt)
 	now = get_tb();
 	if (now >= *next_tb) {
 		evt->event_handler(evt);
-		__this_cpu_inc(irq_stat.timer_irqs_event);
+		inc_irq_stat(LOC_TIMER);
 	} else {
 		now = *next_tb - now;
 		if (now > decrementer_max)
 			now = decrementer_max;
 		set_dec_or_work(now);
-		__this_cpu_inc(irq_stat.timer_irqs_others);
+		inc_irq_stat(OTHER_TIMER);
 	}
 
 	trace_timer_interrupt_exit(regs);
@@ -634,7 +634,7 @@ EXPORT_SYMBOL(timer_interrupt);
 void timer_broadcast_interrupt(void)
 {
 	tick_receive_broadcast();
-	__this_cpu_inc(irq_stat.broadcast_irqs_event);
+	inc_irq_stat(BCT_TIMER);
 }
 #endif
 
@@ -933,6 +933,7 @@ static void __init set_decrementer_max(void)
 static void __init init_decrementer_clockevent(void)
 {
 	register_decrementer_clockevent(smp_processor_id());
+	vtime_reset();
 }
 
 void secondary_cpu_time_init(void)
@@ -948,6 +949,7 @@ void secondary_cpu_time_init(void)
 	/* FIME: Should make unrelated change to move snapshot_timebase
 	 * call here ! */
 	register_decrementer_clockevent(smp_processor_id());
+	vtime_reset();
 }
 
 /*

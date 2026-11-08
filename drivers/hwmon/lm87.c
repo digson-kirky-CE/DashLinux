@@ -606,13 +606,16 @@ static DEVICE_ATTR_RO(cpu0_vid);
 static ssize_t vrm_show(struct device *dev, struct device_attribute *attr,
 			char *buf)
 {
-	struct lm87_data *data = dev_get_drvdata(dev);
+	struct i2c_client *client = dev_get_drvdata(dev);
+	struct lm87_data *data = i2c_get_clientdata(client);
+
 	return sprintf(buf, "%d\n", data->vrm);
 }
 static ssize_t vrm_store(struct device *dev, struct device_attribute *attr,
 			 const char *buf, size_t count)
 {
-	struct lm87_data *data = dev_get_drvdata(dev);
+	struct i2c_client *client = dev_get_drvdata(dev);
+	struct lm87_data *data = i2c_get_clientdata(client);
 	unsigned long val;
 	int err;
 
@@ -981,8 +984,8 @@ static int lm87_probe(struct i2c_client *client)
  */
 
 static const struct i2c_device_id lm87_id[] = {
-	{ "lm87" },
-	{ "adm1024" },
+	{ .name = "lm87" },
+	{ .name = "adm1024" },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, lm87_id);

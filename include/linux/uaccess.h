@@ -84,7 +84,7 @@
  * the 6 functions (copy_{to,from}_user(), __copy_{to,from}_user_inatomic())
  * that are used instead.  Out of those, __... ones are inlined.  Plain
  * copy_{to,from}_user() might or might not be inlined.  If you want them
- * inlined, have asm/uaccess.h define INLINE_COPY_{TO,FROM}_USER.
+ * inlined, have asm/uaccess.h define INLINE_COPY_USER.
  *
  * NOTE: only copy_from_user() zero-pads the destination in case of short copy.
  * Neither __copy_from_user() nor __copy_from_user_inatomic() zero anything
@@ -157,7 +157,7 @@ __copy_to_user(void __user *to, const void *from, unsigned long n)
 }
 
 /*
- * Architectures that #define INLINE_COPY_TO_USER use this function
+ * Architectures that #define INLINE_COPY_USER use this function
  * directly in the normal copy_to/from_user(), the other ones go
  * through an extern _copy_to/from_user(), which expands the same code
  * here.
@@ -190,10 +190,6 @@ fail:
 	memset(to + (n - res), 0, res);
 	return res;
 }
-#ifndef INLINE_COPY_FROM_USER
-extern __must_check unsigned long
-_copy_from_user(void *, const void __user *, unsigned long);
-#endif
 
 static inline __must_check unsigned long
 _inline_copy_to_user(void __user *to, const void *from, unsigned long n)
@@ -207,7 +203,13 @@ _inline_copy_to_user(void __user *to, const void *from, unsigned long n)
 	}
 	return n;
 }
-#ifndef INLINE_COPY_TO_USER
+#ifdef INLINE_COPY_USER
+# define _copy_to_user _inline_copy_to_user
+# define _copy_from_user _inline_copy_from_user
+#else
+extern __must_check unsigned long
+_copy_from_user(void *, const void __user *, unsigned long);
+
 extern __must_check unsigned long
 _copy_to_user(void __user *, const void *, unsigned long);
 #endif
@@ -217,11 +219,7 @@ copy_from_user(void *to, const void __user *from, unsigned long n)
 {
 	if (!check_copy_size(to, n, false))
 		return n;
-#ifdef INLINE_COPY_FROM_USER
-	return _inline_copy_from_user(to, from, n);
-#else
 	return _copy_from_user(to, from, n);
-#endif
 }
 
 static __always_inline unsigned long __must_check
@@ -229,12 +227,7 @@ copy_to_user(void __user *to, const void *from, unsigned long n)
 {
 	if (!check_copy_size(from, n, true))
 		return n;
-
-#ifdef INLINE_COPY_TO_USER
-	return _inline_copy_to_user(to, from, n);
-#else
 	return _copy_to_user(to, from, n);
-#endif
 }
 
 #ifndef copy_mc_to_kernel
@@ -364,7 +357,7 @@ extern __must_check int check_zeroed_user(const void __user *from, size_t size);
  * struct).
  *
  * @ksize is just sizeof(*dst), and @usize should've been passed by userspace.
- * The recommended usage is something like the following:
+ * The recommended usage is something like the following::
  *
  *   SYSCALL_DEFINE2(foobar, const struct foo __user *, uarg, size_t, usize)
  *   {
@@ -454,7 +447,7 @@ copy_struct_from_user(void *dst, size_t ksize, const void __user *src,
  * about data it does not.
  *
  * @ksize is just sizeof(*src), and @usize should've been passed by userspace.
- * The recommended usage is something like the following:
+ * The recommended usage is something like the following::
  *
  *   SYSCALL_DEFINE2(foobar, struct foo __user *, uarg, size_t, usize)
  *   {
@@ -536,7 +529,7 @@ __copy_struct_generic_bounce_buffer(void *dst, size_t dstsize,
 	memcpy(dst, src, size);
 }
 
-/**
+/*
  * This is like copy_struct_from_user(), but the
  * src buffer was already copied into a kernel
  * bounce buffer, so it will never return -EFAULT.
@@ -560,7 +553,7 @@ copy_struct_from_bounce_buffer(void *dst, size_t dstsize,
 	return 0;
 }
 
-/**
+/*
  * This is like copy_struct_to_user(), but the
  * dst buffer is a kernel bounce buffer instead
  * of a direct userspace buffer, so it will never return -EFAULT.
@@ -777,7 +770,7 @@ static __always_inline void __scoped_user_rw_access_end(const void *p)
  * If the user access function inside the scope requires a fault label, it
  * can use @elbl or a different label outside the scope, which requires
  * that user access which is implemented with ASM GOTO has been properly
- * wrapped. See unsafe_get_user() for reference.
+ * wrapped. See unsafe_get_user() for reference::
  *
  *	scoped_user_rw_access(ptr, efault) {
  *		unsafe_get_user(rval, &ptr->rval, efault);

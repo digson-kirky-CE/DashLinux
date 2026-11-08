@@ -355,13 +355,13 @@ drm_atomic_set_crtc_for_connector(struct drm_connector_state *conn_state,
 }
 EXPORT_SYMBOL(drm_atomic_set_crtc_for_connector);
 
-static void set_out_fence_for_crtc(struct drm_atomic_state *state,
+static void set_out_fence_for_crtc(struct drm_atomic_commit *state,
 				   struct drm_crtc *crtc, s32 __user *fence_ptr)
 {
 	state->crtcs[drm_crtc_index(crtc)].out_fence_ptr = fence_ptr;
 }
 
-static s32 __user *get_out_fence_for_crtc(struct drm_atomic_state *state,
+static s32 __user *get_out_fence_for_crtc(struct drm_atomic_commit *state,
 					  struct drm_crtc *crtc)
 {
 	s32 __user *fence_ptr;
@@ -372,7 +372,7 @@ static s32 __user *get_out_fence_for_crtc(struct drm_atomic_state *state,
 	return fence_ptr;
 }
 
-static int set_out_fence_for_connector(struct drm_atomic_state *state,
+static int set_out_fence_for_connector(struct drm_atomic_commit *state,
 					struct drm_connector *connector,
 					s32 __user *fence_ptr)
 {
@@ -389,7 +389,7 @@ static int set_out_fence_for_connector(struct drm_atomic_state *state,
 	return 0;
 }
 
-static s32 __user *get_out_fence_for_connector(struct drm_atomic_state *state,
+static s32 __user *get_out_fence_for_connector(struct drm_atomic_commit *state,
 					       struct drm_connector *connector)
 {
 	unsigned int index = drm_connector_index(connector);
@@ -786,6 +786,11 @@ static int drm_atomic_colorop_set_property(struct drm_colorop *colorop,
 		return drm_atomic_color_set_data_property(colorop, state,
 							  property, val,
 							  replaced);
+	} else if (property == colorop->fixed_matrix_type_property) {
+		if (state->fixed_matrix_type != val) {
+			state->fixed_matrix_type = val;
+			*replaced = true;
+		}
 	} else {
 		drm_dbg_atomic(colorop->dev,
 			       "[COLOROP:%d:%d] unknown property [PROP:%d:%s]\n",
@@ -818,6 +823,8 @@ drm_atomic_colorop_get_property(struct drm_colorop *colorop,
 		*val = state->lut3d_interpolation;
 	else if (property == colorop->data_property)
 		*val = (state->data) ? state->data->base.id : 0;
+	else if (property == colorop->fixed_matrix_type_property)
+		*val = state->fixed_matrix_type;
 	else
 		return -EINVAL;
 
@@ -960,6 +967,8 @@ static int drm_atomic_connector_set_property(struct drm_connector *connector,
 		state->privacy_screen_sw_state = val;
 	} else if (property == connector->broadcast_rgb_property) {
 		state->hdmi.broadcast_rgb = val;
+	} else if (property == connector->color_format_property) {
+		state->color_format = val;
 	} else if (connector->funcs->atomic_set_property) {
 		return connector->funcs->atomic_set_property(connector,
 				state, property, val);
@@ -1045,6 +1054,8 @@ drm_atomic_connector_get_property(struct drm_connector *connector,
 		*val = state->privacy_screen_sw_state;
 	} else if (property == connector->broadcast_rgb_property) {
 		*val = state->hdmi.broadcast_rgb;
+	} else if (property == connector->color_format_property) {
+		*val = state->color_format;
 	} else if (connector->funcs->atomic_get_property) {
 		return connector->funcs->atomic_get_property(connector,
 				state, property, val);
@@ -1129,7 +1140,7 @@ static struct drm_pending_vblank_event *create_vblank_event(
 	return e;
 }
 
-int drm_atomic_connector_commit_dpms(struct drm_atomic_state *state,
+int drm_atomic_connector_commit_dpms(struct drm_atomic_commit *state,
 				     struct drm_connector *connector,
 				     int mode)
 {
@@ -1196,7 +1207,7 @@ static int drm_atomic_check_prop_changes(int ret, uint64_t old_val, uint64_t pro
 	return 0;
 }
 
-int drm_atomic_set_property(struct drm_atomic_state *state,
+int drm_atomic_set_property(struct drm_atomic_commit *state,
 			    struct drm_file *file_priv,
 			    struct drm_mode_object *obj,
 			    struct drm_property *prop,
@@ -1412,7 +1423,7 @@ static int setup_out_fence(struct drm_out_fence_state *fence_state,
 }
 
 static int prepare_signaling(struct drm_device *dev,
-				  struct drm_atomic_state *state,
+				  struct drm_atomic_commit *state,
 				  struct drm_mode_atomic *arg,
 				  struct drm_file *file_priv,
 				  struct drm_out_fence_state **fence_state,
@@ -1445,9 +1456,6 @@ static int prepare_signaling(struct drm_device *dev,
 		if (arg->flags & DRM_MODE_PAGE_FLIP_EVENT) {
 			struct drm_pending_vblank_event *e = crtc_state->event;
 
-			if (!file_priv)
-				continue;
-
 			ret = drm_event_reserve_init(dev, file_priv, &e->base,
 						     &e->event.base);
 			if (ret) {
@@ -1461,10 +1469,12 @@ static int prepare_signaling(struct drm_device *dev,
 			struct dma_fence *fence;
 			struct drm_out_fence_state *f;
 
+			ret = -ENOMEM;
+
 			f = krealloc(*fence_state, sizeof(**fence_state) *
 				     (*num_fences + 1), GFP_KERNEL);
 			if (!f)
-				return -ENOMEM;
+				goto err_free_event;
 
 			memset(&f[*num_fences], 0, sizeof(*f));
 
@@ -1473,12 +1483,12 @@ static int prepare_signaling(struct drm_device *dev,
 
 			fence = drm_crtc_create_fence(crtc);
 			if (!fence)
-				return -ENOMEM;
+				goto err_free_event;
 
 			ret = setup_out_fence(&f[(*num_fences)++], fence);
 			if (ret) {
 				dma_fence_put(fence);
-				return ret;
+				goto err_free_event;
 			}
 
 			crtc_state->event->base.fence = fence;
@@ -1534,10 +1544,15 @@ static int prepare_signaling(struct drm_device *dev,
 	}
 
 	return 0;
+
+err_free_event:
+	drm_event_cancel_free(dev, &crtc_state->event->base);
+	crtc_state->event = NULL;
+	return ret;
 }
 
 static void complete_signaling(struct drm_device *dev,
-			       struct drm_atomic_state *state,
+			       struct drm_atomic_commit *state,
 			       struct drm_out_fence_state *fence_state,
 			       unsigned int num_fences,
 			       bool install_fds)
@@ -1560,9 +1575,11 @@ static void complete_signaling(struct drm_device *dev,
 		/*
 		 * Free the allocated event. drm_atomic_helper_setup_commit
 		 * can allocate an event too, so only free it if it's ours
-		 * to prevent a double free in drm_atomic_state_clear.
+		 * to prevent a double free in drm_atomic_commit_clear.
 		 */
 		if (event && (event->base.fence || event->base.file_priv)) {
+			if (crtc_state->commit && crtc_state->commit->abort_completion)
+				drm_crtc_commit_put(crtc_state->commit);
 			drm_event_cancel_free(dev, &event->base);
 			crtc_state->event = NULL;
 		}
@@ -1587,7 +1604,7 @@ static void complete_signaling(struct drm_device *dev,
 }
 
 static void
-set_async_flip(struct drm_atomic_state *state)
+set_async_flip(struct drm_atomic_commit *state)
 {
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *crtc_state;
@@ -1607,7 +1624,7 @@ int drm_mode_atomic_ioctl(struct drm_device *dev,
 	uint32_t __user *props_ptr = (uint32_t __user *)(unsigned long)(arg->props_ptr);
 	uint64_t __user *prop_values_ptr = (uint64_t __user *)(unsigned long)(arg->prop_values_ptr);
 	unsigned int copied_objs, copied_props;
-	struct drm_atomic_state *state;
+	struct drm_atomic_commit *state;
 	struct drm_modeset_acquire_ctx ctx;
 	struct drm_out_fence_state *fence_state;
 	int ret = 0;
@@ -1656,7 +1673,7 @@ int drm_mode_atomic_ioctl(struct drm_device *dev,
 		return -EINVAL;
 	}
 
-	state = drm_atomic_state_alloc(dev);
+	state = drm_atomic_commit_alloc(dev);
 	if (!state)
 		return -ENOMEM;
 
@@ -1764,13 +1781,13 @@ out:
 	complete_signaling(dev, state, fence_state, num_fences, !ret);
 
 	if (ret == -EDEADLK) {
-		drm_atomic_state_clear(state);
+		drm_atomic_commit_clear(state);
 		ret = drm_modeset_backoff(&ctx);
 		if (!ret)
 			goto retry;
 	}
 
-	drm_atomic_state_put(state);
+	drm_atomic_commit_put(state);
 
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);

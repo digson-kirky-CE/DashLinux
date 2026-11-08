@@ -107,7 +107,7 @@
  *
  *	Jul.25, 2004	Hiroshi Miura <miura@da-cha.org>
  *		- v0.4  first post version
- *		        add function to retrive SIFR
+ *		        add function to retrieve SIFR
  *
  *	Jul.24, 2004	Hiroshi Miura <miura@da-cha.org>
  *		- v0.3  get proper status of hotkey
@@ -159,8 +159,6 @@ MODULE_LICENSE("GPL");
 #define ECO_MODE_ON		0x80
 
 #define ACPI_PCC_DRIVER_NAME	"Panasonic Laptop Support"
-#define ACPI_PCC_DEVICE_NAME	"Hotkey"
-#define ACPI_PCC_CLASS		"pcc"
 
 #define ACPI_PCC_INPUT_PHYS	"panasonic/hkey0"
 
@@ -234,6 +232,7 @@ static const struct key_entry panasonic_keymap[] = {
 	{ KE_KEY, 41, { KEY_MACRO9 } },
 	{ KE_KEY, 42, { KEY_MACRO10 } },
 	{ KE_KEY, 43, { KEY_MACRO11 } },
+	{ KE_KEY, 48, { KEY_FN } },
 	{ KE_END, 0 }
 };
 
@@ -246,11 +245,11 @@ struct pcc_acpi {
 	int			ac_brightness;
 	int			dc_brightness;
 	int			current_brightness;
-	u32			*sinf;
 	struct acpi_device	*device;
 	struct input_dev	*input_dev;
 	struct backlight_device	*backlight;
 	struct platform_device	*platform;
+	u32			sinf[] __counted_by(num_sifr);
 };
 
 /*
@@ -360,7 +359,16 @@ static int acpi_pcc_retrieve_biosdata(struct pcc_acpi *pcc)
 		} else
 			pr_err("Invalid HKEY.SINF data\n");
 	}
-	pcc->sinf[hkey->package.count] = -1;
+	/*
+	 * pcc->sinf[] has pcc->num_sifr elements (valid indices
+	 * 0..num_sifr-1). On DSDTs where SINF's package count equals
+	 * num_sifr exactly -- the off-by-one case probe()'s num_sifr++
+	 * already allocates a spare element for -- there is no room left
+	 * for this trailing sentinel; nothing reads it back, so just skip
+	 * the write rather than running one element past the flex array.
+	 */
+	if (hkey->package.count < pcc->num_sifr)
+		pcc->sinf[hkey->package.count] = -1;
 
 end:
 	kfree(buffer.pointer);
@@ -857,6 +865,17 @@ static void acpi_pcc_generate_keyinput(struct pcc_acpi *pcc)
 	}
 
 	/*
+	 * Let's Note models report both FN key down and key up
+	 * without the expected 0x80 key up/down bit
+	 */
+	if (key == 48) {
+		updown = 1;
+	} else if (key == 49) {
+		key = 48;
+		updown = 0;
+	}
+
+	/*
 	 * Don't report brightness key-presses if they are also reported
 	 * by the ACPI video bus.
 	 */
@@ -1007,29 +1026,21 @@ static int acpi_pcc_hotkey_probe(struct platform_device *pdev)
 	 */
 	num_sifr++;
 
-	pcc = kzalloc_obj(struct pcc_acpi);
+	pcc = kzalloc_flex(*pcc, sinf, num_sifr);
 	if (!pcc) {
 		pr_err("Couldn't allocate mem for pcc");
 		return -ENOMEM;
 	}
 
-	pcc->sinf = kcalloc(num_sifr + 1, sizeof(u32), GFP_KERNEL);
-	if (!pcc->sinf) {
-		result = -ENOMEM;
-		goto out_hotkey;
-	}
-
+	pcc->num_sifr = num_sifr;
 	pcc->device = device;
 	pcc->handle = device->handle;
-	pcc->num_sifr = num_sifr;
 	device->driver_data = pcc;
-	strscpy(acpi_device_name(device), ACPI_PCC_DEVICE_NAME);
-	strscpy(acpi_device_class(device), ACPI_PCC_CLASS);
 
 	result = acpi_pcc_init_input(pcc);
 	if (result) {
 		pr_err("Error installing keyinput handler\n");
-		goto out_sinf;
+		goto out_hotkey;
 	}
 
 	if (!acpi_pcc_retrieve_biosdata(pcc)) {
@@ -1110,10 +1121,8 @@ out_backlight:
 	backlight_device_unregister(pcc->backlight);
 out_input:
 	input_unregister_device(pcc->input_dev);
-out_sinf:
-	device->driver_data = NULL;
-	kfree(pcc->sinf);
 out_hotkey:
+	device->driver_data = NULL;
 	kfree(pcc);
 
 	return result;
@@ -1143,7 +1152,6 @@ static void acpi_pcc_hotkey_remove(struct platform_device *pdev)
 
 	device->driver_data = NULL;
 
-	kfree(pcc->sinf);
 	kfree(pcc);
 }
 

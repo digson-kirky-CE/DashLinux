@@ -14,15 +14,32 @@ static const struct btf_type *loop_params_type;
 
 __bpf_kfunc_start_defs();
 
-__bpf_kfunc int bpf_io_uring_submit_sqes(struct io_ring_ctx *ctx, u32 nr)
+__bpf_kfunc int bpf_io_uring_submit_sqes(struct iou_ctx *loop_ctx, u32 nr)
 {
-	return io_submit_sqes(ctx, nr);
+	struct io_ring_ctx *ctx = io_loop_demangle_ctx(loop_ctx);
+	struct bpf_run_ctx *old_run_ctx;
+	int ret;
+
+	/*
+	 * The requests come from the SQ, which user space can write, so they
+	 * are issued for the task and not for the BPF program. Hide the run
+	 * context of the program from them. The users of has_current_bpf_ctx(),
+	 * such as sockopt_lock_sock() and sockopt_capable(), take a context for
+	 * a call from a BPF helper, whose caller holds the socket lock already
+	 * and needs no capability.
+	 */
+	old_run_ctx = bpf_set_run_ctx(NULL);
+	ret = io_submit_sqes(ctx, nr);
+	bpf_reset_run_ctx(old_run_ctx);
+
+	return ret;
 }
 
 __bpf_kfunc
-__u8 *bpf_io_uring_get_region(struct io_ring_ctx *ctx, __u32 region_id,
+__u8 *bpf_io_uring_get_region(struct iou_ctx *loop_ctx, __u32 region_id,
 			      const size_t rdwr_buf_size)
 {
+	struct io_ring_ctx *ctx = io_loop_demangle_ctx(loop_ctx);
 	struct io_mapped_region *r;
 
 	lockdep_assert_held(&ctx->uring_lock);
@@ -58,7 +75,7 @@ static const struct btf_kfunc_id_set bpf_io_uring_kfunc_set = {
 	.set = &io_uring_kfunc_set,
 };
 
-static int io_bpf_ops__loop_step(struct io_ring_ctx *ctx,
+static int io_bpf_ops__loop_step(struct iou_ctx *ctx,
 				 struct iou_loop_params *lp)
 {
 	return IOU_LOOP_STOP;
@@ -164,6 +181,8 @@ static int io_install_bpf(struct io_ring_ctx *ctx, struct io_uring_bpf_ops *ops)
 		return -EOPNOTSUPP;
 
 	if (ctx->bpf_ops)
+		return -EBUSY;
+	if (ops->priv)
 		return -EBUSY;
 	if (WARN_ON_ONCE(!ops->loop_step))
 		return -EINVAL;

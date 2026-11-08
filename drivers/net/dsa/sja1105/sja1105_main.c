@@ -2847,7 +2847,8 @@ static void sja1105_mirror_del(struct dsa_switch *ds, int port,
 }
 
 static int sja1105_port_policer_add(struct dsa_switch *ds, int port,
-				    const struct flow_action_police *policer)
+				    const struct flow_action_police *policer,
+				    struct netlink_ext_ack *extack)
 {
 	struct sja1105_l2_policing_entry *policing;
 	struct sja1105_private *priv = ds->priv;
@@ -3373,7 +3374,7 @@ static const struct of_device_id sja1105_dt_ids[] = {
 	{ .compatible = "nxp,sja1110b", .data = &sja1110b_info },
 	{ .compatible = "nxp,sja1110c", .data = &sja1110c_info },
 	{ .compatible = "nxp,sja1110d", .data = &sja1110d_info },
-	{ /* sentinel */ },
+	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, sja1105_dt_ids);
 

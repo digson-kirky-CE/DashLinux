@@ -145,7 +145,7 @@ static inline void get_acpi_method_name(const struct wmi_block *wblock,
 	buffer[4] = '\0';
 }
 
-static int wmidev_match_guid(struct device *dev, const void *data)
+static int wmidev_match_guid_legacy(struct device *dev, const void *data)
 {
 	struct wmi_block *wblock = dev_to_wblock(dev);
 	const guid_t *guid = data;
@@ -218,7 +218,7 @@ static struct wmi_device *wmi_find_device_by_guid(const char *guid_string)
 	if (ret < 0)
 		return ERR_PTR(ret);
 
-	dev = bus_find_device(&wmi_bus_type, NULL, &guid, wmidev_match_guid);
+	dev = bus_find_device(&wmi_bus_type, NULL, &guid, wmidev_match_guid_legacy);
 	if (!dev)
 		return ERR_PTR(-ENODEV);
 
@@ -800,10 +800,10 @@ acpi_status wmi_remove_notify_handler(const char *guid)
 EXPORT_SYMBOL_GPL(wmi_remove_notify_handler);
 
 /**
- * wmi_has_guid - Check if a GUID is available
+ * wmi_has_guid - Check if a GUID is available (deprecated)
  * @guid_string: 36 char string of the form fa50ff2b-f2e8-45de-83fa-65417f2f49ba
  *
- * Check if a given GUID is defined by _WDG.
+ * Check if a given GUID is available and usable with the legacy GUID-based API.
  *
  * Return: True if GUID is available, false otherwise.
  */
@@ -820,6 +820,31 @@ bool wmi_has_guid(const char *guid_string)
 	return true;
 }
 EXPORT_SYMBOL_GPL(wmi_has_guid);
+
+static int wmidev_match_guid(struct device *dev, void *data)
+{
+	struct wmi_block *wblock = dev_to_wblock(dev);
+	const guid_t *guid = data;
+
+	if (guid_equal(guid, &wblock->gblock.guid))
+		return 1;
+
+	return 0;
+}
+
+/**
+ * wmidev_exists - Check if a WMI device with a given GUID exists
+ * @guid: GUID of the WMI device to search for
+ *
+ * Check if a WMI device with a given GUID exists at the given moment.
+ *
+ * Return: True if a matching WMI device exists, false otherwise.
+ */
+bool wmidev_exists(const guid_t *guid)
+{
+	return bus_for_each_dev(&wmi_bus_type, NULL, (void *)guid, wmidev_match_guid) == 1;
+}
+EXPORT_SYMBOL_GPL(wmidev_exists);
 
 /**
  * wmi_get_acpi_device_uid() - Get _UID name of ACPI device that defines GUID (deprecated)
@@ -858,7 +883,8 @@ static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
 
 	return sysfs_emit(buf, "wmi:%pUL\n", &wblock->gblock.guid);
 }
-static DEVICE_ATTR_RO(modalias);
+
+static const DEVICE_ATTR_RO(modalias);
 
 static ssize_t guid_show(struct device *dev, struct device_attribute *attr,
 			 char *buf)
@@ -867,7 +893,8 @@ static ssize_t guid_show(struct device *dev, struct device_attribute *attr,
 
 	return sysfs_emit(buf, "%pUL\n", &wblock->gblock.guid);
 }
-static DEVICE_ATTR_RO(guid);
+
+static const DEVICE_ATTR_RO(guid);
 
 static ssize_t instance_count_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
@@ -876,7 +903,8 @@ static ssize_t instance_count_show(struct device *dev,
 
 	return sysfs_emit(buf, "%d\n", (int)wblock->gblock.instance_count);
 }
-static DEVICE_ATTR_RO(instance_count);
+
+static const DEVICE_ATTR_RO(instance_count);
 
 static ssize_t expensive_show(struct device *dev,
 			      struct device_attribute *attr, char *buf)
@@ -886,9 +914,10 @@ static ssize_t expensive_show(struct device *dev,
 	return sysfs_emit(buf, "%d\n",
 			  (wblock->gblock.flags & ACPI_WMI_EXPENSIVE) != 0);
 }
-static DEVICE_ATTR_RO(expensive);
 
-static struct attribute *wmi_attrs[] = {
+static const DEVICE_ATTR_RO(expensive);
+
+static const struct attribute * const wmi_attrs[] = {
 	&dev_attr_modalias.attr,
 	&dev_attr_guid.attr,
 	&dev_attr_instance_count.attr,
@@ -904,9 +933,10 @@ static ssize_t notify_id_show(struct device *dev, struct device_attribute *attr,
 
 	return sysfs_emit(buf, "%02X\n", (unsigned int)wblock->gblock.notify_id);
 }
-static DEVICE_ATTR_RO(notify_id);
 
-static struct attribute *wmi_event_attrs[] = {
+static const DEVICE_ATTR_RO(notify_id);
+
+static const struct attribute * const wmi_event_attrs[] = {
 	&dev_attr_notify_id.attr,
 	NULL
 };
@@ -920,7 +950,8 @@ static ssize_t object_id_show(struct device *dev, struct device_attribute *attr,
 	return sysfs_emit(buf, "%c%c\n", wblock->gblock.object_id[0],
 			  wblock->gblock.object_id[1]);
 }
-static DEVICE_ATTR_RO(object_id);
+
+static const DEVICE_ATTR_RO(object_id);
 
 static ssize_t setable_show(struct device *dev, struct device_attribute *attr,
 			    char *buf)
@@ -929,16 +960,17 @@ static ssize_t setable_show(struct device *dev, struct device_attribute *attr,
 
 	return sysfs_emit(buf, "%d\n", (int)wdev->setable);
 }
-static DEVICE_ATTR_RO(setable);
 
-static struct attribute *wmi_data_attrs[] = {
+static const DEVICE_ATTR_RO(setable);
+
+static const struct attribute * const wmi_data_attrs[] = {
 	&dev_attr_object_id.attr,
 	&dev_attr_setable.attr,
 	NULL
 };
 ATTRIBUTE_GROUPS(wmi_data);
 
-static struct attribute *wmi_method_attrs[] = {
+static const struct attribute * const wmi_method_attrs[] = {
 	&dev_attr_object_id.attr,
 	NULL
 };
@@ -1088,7 +1120,7 @@ static void wmi_dev_shutdown(struct device *dev)
 	}
 }
 
-static struct class wmi_bus_class = {
+static const struct class wmi_bus_class = {
 	.name = "wmi_bus",
 };
 

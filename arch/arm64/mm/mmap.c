@@ -34,7 +34,7 @@ static pgprot_t protection_map[16] __ro_after_init = {
 	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]	= PAGE_SHARED_EXEC
 };
 
-static ptdesc_t gcs_page_prot __ro_after_init = _PAGE_GCS_RO;
+static ptval_t gcs_page_prot __ro_after_init = _PAGE_GCS_RO;
 
 /*
  * You really shouldn't be using read() or write() on /dev/mem.  This might go
@@ -61,7 +61,9 @@ int valid_phys_addr_range(phys_addr_t addr, size_t size)
  */
 int valid_mmap_phys_addr_range(unsigned long pfn, size_t size)
 {
-	return !(((pfn << PAGE_SHIFT) + size) & ~PHYS_MASK);
+	const phys_addr_t limit = PHYS_MASK + 1;
+
+	return size <= limit && pfn <= (limit - size) >> PAGE_SHIFT;
 }
 
 static int __init adjust_protection_map(void)
@@ -87,7 +89,7 @@ arch_initcall(adjust_protection_map);
 
 pgprot_t vm_get_page_prot(vm_flags_t vm_flags)
 {
-	ptdesc_t prot;
+	ptval_t prot;
 
 	/* Short circuit GCS to avoid bloating the table. */
 	if (system_supports_gcs() && (vm_flags & VM_SHADOW_STACK)) {

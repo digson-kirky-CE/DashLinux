@@ -7,6 +7,7 @@
 # Common code factored out by Masahiro Yamada
 
 bash ../client-system/omarchy.sh
+bash ../cilent-system/ubuntu24.04.sh
 
 # Make sure the files actually exist
 for file in "${KBUILD_IMAGE}" System.map
